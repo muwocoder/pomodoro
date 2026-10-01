@@ -911,6 +911,7 @@
      --------------------------------------------------------------- */
   function start() {
     if (running) return;
+    stopChime(); 
     if (remainingMs <= 0) remainingMs = totalMs;
     endAt = Date.now() + remainingMs;
     running = true;
@@ -1002,31 +1003,50 @@
      --------------------------------------------------------------- */
   var audioCtx = null;
 
-  function chime() {
-    try {
-      var Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtx) audioCtx = new Ctx();
-      if (audioCtx.state === "suspended") audioCtx.resume();
+  var chimeTimers = [];
+var CHIME_REPEATS = 4;   // how many times the two-note figure plays
+var CHIME_GAP     = 0.23; // seconds between the two notes within a repeat
+var CHIME_PERIOD  = 1.6;  // seconds between the start of each repeat
+var CHIME_TAIL    = 1.1;  // decay length of a single note
 
-      var now = audioCtx.currentTime;
-      var notes = mode === "focus" ? [587.33, 880] : [880, 1174.66];
+function stopChime() {
+  chimeTimers.forEach(function (t) { clearTimeout(t); });
+  chimeTimers = [];
+}
 
-      notes.forEach(function (freq, i) {
-        var osc = audioCtx.createOscillator();
-        var gain = audioCtx.createGain();
-        var t = now + i * 0.17;
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.16, t + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
-        osc.connect(gain).connect(audioCtx.destination);
-        osc.start(t);
-        osc.stop(t + 1.2);
-      });
-    } catch (e) { /* audio unavailable */ }
-  }
+function playChimeNotes(notes) {
+  var now = audioCtx.currentTime;
+  notes.forEach(function (freq, i) {
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    var t = now + i * CHIME_GAP;
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.16, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + CHIME_TAIL);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + CHIME_TAIL + 0.1);
+  });
+}
+
+function chime() {
+  try {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!audioCtx) audioCtx = new Ctx();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+
+    stopChime();
+    var notes = mode === "focus" ? [587.33, 880] : [880, 1174.66];
+    for (var r = 0; r < CHIME_REPEATS; r++) {
+      chimeTimers.push(
+        setTimeout(function () { playChimeNotes(notes); }, r * CHIME_PERIOD * 1000)
+      );
+    }
+  } catch (e) { /* audio unavailable */ }
+}
 
   /* ---------------------------------------------------------------
      Theme
